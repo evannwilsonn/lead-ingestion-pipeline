@@ -1,6 +1,6 @@
 # Lead Ingestion Pipeline — Setup
 
-Gmail ("New Website Inquiry") → Claude (structured extraction + tiering) → Airtable upsert.
+Gmail ("New Website Inquiry") → Claude (structured extraction + tiering) → Airtable upsert → optional text alert to your team for Tier 1 leads.
 
 ## 1. Google Cloud Console (Gmail API credentials)
 
@@ -23,7 +23,7 @@ Gmail ("New Website Inquiry") → Claude (structured extraction + tiering) → A
 
 ## 2. Airtable
 
-Create a table (e.g. `Leads`) with these exact field names:
+Create a table (e.g. `Leads`) with these exact field names. They are case-sensitive and must match character for character, or every write fails and the email gets the `Lead-Failed` label:
 
 | Field | Type |
 |---|---|
@@ -45,7 +45,22 @@ Upserts merge on **Email** (a repeat inquiry updates the existing row with the l
 
 Create an API key at https://console.anthropic.com. Override the model with `CLAUDE_MODEL` if needed.
 
-## 4. Deploy to a cloud server (Ubuntu example)
+## 4. Twilio Tier 1 alerts (optional)
+
+1. Sign up at https://www.twilio.com and buy a phone number with SMS (a few dollars a month).
+2. US numbers must be registered for A2P 10DLC (Messaging → Regulatory Compliance) before Twilio will deliver texts to US phones; this approval can take a few days. On a trial account you can only text numbers you've verified.
+3. From the Twilio Console, copy the Account SID and Auth Token into `.env`, along with your Twilio number as `TWILIO_FROM_NUMBER` and the team's cell numbers as `ALERT_TO_NUMBERS`.
+
+When those are set, every Tier 1 lead triggers a text like:
+
+```
+TIER 1 LEAD: Dana Ruiz | Budget: $25,000 | (813) 555-0142
+Needs a booking site for three clinics. Wants launch in four weeks.
+```
+
+The text is sent after the lead is saved and the email is marked processed, so a rerun never double-texts, and a failed text never blocks the lead from reaching Airtable. Leave the Twilio variables blank to turn alerts off.
+
+## 5. Deploy to a cloud server (Ubuntu example)
 
 ```bash
 sudo useradd --system --create-home --home-dir /opt/lead-pipeline leadbot
@@ -72,20 +87,20 @@ Test before scheduling (prints parsed JSON, writes nothing):
 ./run_pipeline.sh            # one real run
 ```
 
-## 5. Schedule with cron
+## 6. Schedule with cron
 
 ```bash
 sudo mkdir -p /var/log/lead-pipeline && sudo chown leadbot: /var/log/lead-pipeline
 sudo -u leadbot crontab -e
 ```
 
-Add (every 5 minutes):
+Add (runs every minute):
 
 ```
-*/5 * * * * /opt/lead-pipeline/run_pipeline.sh >> /var/log/lead-pipeline/run.log 2>&1
+* * * * * /opt/lead-pipeline/run_pipeline.sh >> /var/log/lead-pipeline/run.log 2>&1
 ```
 
-`flock` in the wrapper skips a run if the previous one is still going. Rotate logs with `/etc/logrotate.d/lead-pipeline`:
+New leads reach Airtable, and Tier 1 texts go out, within about one to two minutes. Running every minute is safe: an empty inbox check takes a second and uses a tiny slice of Gmail's quota, and `flock` in the wrapper skips a run if the previous one is still going. Use `*/5 * * * *` instead if a five-minute delay is fine. Rotate logs with `/etc/logrotate.d/lead-pipeline`:
 
 ```
 /var/log/lead-pipeline/*.log {

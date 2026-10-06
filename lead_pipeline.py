@@ -7,7 +7,8 @@ Flow per run:
   2. Extract the body text and send it to Claude, which returns a structured
      lead (forced tool call, so the output is always schema-valid JSON).
   3. Validate/normalize the lead and upsert it into Airtable.
-  4. On success, mark the email read and label it Lead-Processed.
+  4. On success, mark the email read and label it Lead-Processed, then (optional)
+     text a Tier 1 alert to your team via Twilio.
      On a permanent failure (empty body, unparseable), label it Lead-Failed and
      leave it unread for a human. On a transient failure (rate limit, network,
      outage), leave it untouched so the next run retries it.
@@ -81,6 +82,15 @@ def _env(name: str, default: str | None = None, required: bool = True) -> str:
     return value or ""
 
 
+def _env_any(*names: str) -> str:
+    """First non-empty value among several accepted names (lets common aliases work)."""
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    raise FatalError(f"Missing required environment variable: {names[0]}")
+
+
 @dataclass(frozen=True)
 class Config:
     anthropic_api_key: str
@@ -94,6 +104,14 @@ class Config:
     failed_label: str
     max_emails: int
     tier1_budget: float
+    twilio_sid: str
+    twilio_token: str
+    twilio_from: str
+    alert_to: tuple[str, ...]
+
+    @property
+    def sms_enabled(self) -> bool:
+        return bool(self.twilio_sid and self.twilio_token and self.twilio_from and self.alert_to)
 
     @classmethod
     def load(cls) -> "Config":
@@ -104,9 +122,9 @@ class Config:
             raise FatalError(f"Invalid numeric env var: {exc}") from exc
         return cls(
             anthropic_api_key=_env("ANTHROPIC_API_KEY"),
-            airtable_api_key=_env("AIRTABLE_API_KEY"),
+            airtable_api_key=_env_any("AIRTABLE_API_KEY", "AIRTABLE_PAT"),
             airtable_base_id=_env("AIRTABLE_BASE_ID"),
-            airtable_table=_env("AIRTABLE_TABLE"),
+            airtable_table=_env_any("AIRTABLE_TABLE", "AIRTABLE_TABLE_NAME"),
             gmail_token_file=_env("GMAIL_TOKEN_FILE"),
             claude_model=_env("CLAUDE_MODEL", "claude-sonnet-5-5"),
             subject=_env("GMAIL_SUBJECT", "New Website Inquiry"),
@@ -114,6 +132,12 @@ class Config:
             failed_label=_env("GMAIL_FAILED_LABEL", "Lead-Failed"),
             max_emails=max_emails,
             tier1_budget=tier1_budget,
+            twilio_sid=_env("TWILIO_ACCOUNT_SID", required=False),
+            twilio_token=_env("TWILIO_AUTH_TOKEN", required=False),
+            twilio_from=_env("TWILIO_FROM_NUMBER", required=False),
+            alert_to=tuple(
+                n.strip() for n in _env("ALERT_TO_NUMBERS", required=False).split(",") if n.strip()
+            ),
         )
 
 
@@ -484,9 +508,52 @@ class AirtableClient:
 
 
 # --------------------------------------------------------------------------- #
+# Twilio SMS alerts (optional; enabled only when all TWILIO_* vars and ALERT_TO_NUMBERS are set)
+# --------------------------------------------------------------------------- #
+def format_alert(lead: dict[str, Any]) -> str:
+    name = " ".join(p for p in (lead["first_name"], lead["last_name"]) if p) or "Unknown name"
+    budget = f"${lead['estimated_budget']:,.0f}" if lead["estimated_budget"] is not None else "not stated"
+    contact = lead["phone"] or lead["email"] or "no contact info"
+    body = f"TIER 1 LEAD: {name} | Budget: {budget} | {contact}\n{lead['summary']}"
+    return body if len(body) <= 320 else body[:317] + "..."  # keep it to ~2 SMS segments
+
+
+class TwilioClient:
+    def __init__(self, cfg: Config):
+        self.url = f"https://api.twilio.com/2010-04-01/Accounts/{cfg.twilio_sid}/Messages.json"
+        self.auth = (cfg.twilio_sid, cfg.twilio_token)
+        self.sender = cfg.twilio_from
+        self.recipients = cfg.alert_to
+
+    def _send_one(self, to: str, body: str) -> None:
+        def _call() -> None:
+            try:
+                resp = requests.post(self.url, auth=self.auth, timeout=20,
+                                     data={"From": self.sender, "To": to, "Body": body})
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                raise TransientError(f"Twilio connection error: {exc}") from exc
+            if resp.status_code == 429 or resp.status_code >= 500:
+                raise TransientError(f"Twilio {resp.status_code}")
+            if resp.status_code >= 400:
+                raise PermanentError(f"Twilio rejected SMS {resp.status_code}: {resp.text[:300]}")
+
+        with_retries(_call, attempts=3, what="Twilio SMS")
+
+    def alert(self, lead: dict[str, Any]) -> None:
+        """Best effort: an alert failure is logged, never allowed to fail the lead itself."""
+        body = format_alert(lead)
+        for to in self.recipients:
+            try:
+                self._send_one(to, body)
+                log.info("Tier 1 SMS alert sent to ...%s", to[-4:])
+            except (TransientError, PermanentError) as exc:
+                log.error("Tier 1 SMS alert to ...%s failed: %s", to[-4:], exc)
+
+
+# --------------------------------------------------------------------------- #
 # Orchestration
 # --------------------------------------------------------------------------- #
-def process_message(svc, claude, airtable, cfg: Config, msg_id: str,
+def process_message(svc, claude, airtable, sms, cfg: Config, msg_id: str,
                     processed_id: str, failed_id: str, dry_run: bool) -> str:
     msg = gexec(svc.users().messages().get(userId="me", id=msg_id, format="full"), "get message")
     hdrs = headers_of(msg)
@@ -509,6 +576,8 @@ def process_message(svc, claude, airtable, cfg: Config, msg_id: str,
 
         if dry_run:
             print(json.dumps({"gmail_message_id": msg_id, **lead}, indent=2))
+            if lead["lead_tier"] == "Tier 1" and sms:
+                print(f"[dry-run] would text Tier 1 alert:\n{format_alert(lead)}")
             return "ok"
 
         if not lead["email"] and not lead["phone"]:
@@ -527,6 +596,9 @@ def process_message(svc, claude, airtable, cfg: Config, msg_id: str,
         body={"removeLabelIds": ["UNREAD"], "addLabelIds": [processed_id]},
     ), "mark processed")
     log.info("Processed %s -> %s, %s", msg_id, lead["lead_tier"], mask_email(lead["email"]))
+    # Sent only after the email is marked processed, so a rerun can never double-text.
+    if lead["lead_tier"] == "Tier 1" and sms:
+        sms.alert(lead)
     return "ok"
 
 
@@ -535,6 +607,9 @@ def run(dry_run: bool) -> int:
     svc = gmail_service(cfg)
     claude = anthropic.Anthropic(api_key=cfg.anthropic_api_key, max_retries=5, timeout=60.0)
     airtable = AirtableClient(cfg)
+    sms = TwilioClient(cfg) if cfg.sms_enabled else None
+    if sms is None:
+        log.info("Twilio not configured; Tier 1 SMS alerts are off")
 
     processed_id = ensure_label(svc, cfg.processed_label)
     failed_id = ensure_label(svc, cfg.failed_label)
@@ -546,7 +621,7 @@ def run(dry_run: bool) -> int:
     consecutive_transient = 0
     for msg_id in ids:
         try:
-            result = process_message(svc, claude, airtable, cfg, msg_id, processed_id, failed_id, dry_run)
+            result = process_message(svc, claude, airtable, sms, cfg, msg_id, processed_id, failed_id, dry_run)
             counts[result] += 1
             consecutive_transient = 0
         except TransientError as exc:
