@@ -1,0 +1,5 @@
+anthropic>=0.40
+google-auth>=2.30
+google-auth-oauthlib>=1.2
+google-api-python-client>=2.130
+requests>=2.32
