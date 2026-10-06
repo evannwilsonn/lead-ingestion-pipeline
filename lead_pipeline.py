@@ -76,7 +76,7 @@ def load_dotenv(path: Path = SCRIPT_DIR / ".env") -> None:
         if value[:1] in ("'", '"') and value[-1:] == value[:1] and len(value) >= 2:
             value = value[1:-1]
         else:
-            value = "" if value.startswith("#") else re.split(r"\s+#", value, maxsplit=1)[0].strip()
+            value = value.split("#", 1)[0].strip()  # unquoted: anything after # is a comment
         if key and key not in os.environ:
             os.environ[key] = value
 
