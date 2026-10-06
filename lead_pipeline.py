@@ -158,9 +158,11 @@ class Config:
             tier1_budget=tier1_budget,
             twilio_sid=_env("TWILIO_ACCOUNT_SID", required=False),
             twilio_token=_env("TWILIO_AUTH_TOKEN", required=False),
-            twilio_from=_env("TWILIO_FROM_NUMBER", required=False),
+            twilio_from=os.environ.get("TWILIO_FROM_NUMBER") or os.environ.get("TWILIO_PHONE_NUMBER", ""),
             alert_to=tuple(
-                n.strip() for n in _env("ALERT_TO_NUMBERS", required=False).split(",") if n.strip()
+                n.strip()
+                for n in (os.environ.get("ALERT_TO_NUMBERS") or os.environ.get("MY_CELL_PHONE", "")).split(",")
+                if n.strip()
             ),
         )
 
