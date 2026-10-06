@@ -60,6 +60,33 @@ Needs a booking site for three clinics. Wants launch in four weeks.
 
 The text is sent after the lead is saved and the email is marked processed, so a rerun never double-texts, and a failed text never blocks the lead from reaching Airtable. Leave the Twilio variables blank to turn alerts off.
 
+## Windows: test on your own PC
+
+Good for testing. It only runs while the PC is on and awake, so use a server (next section) for clients.
+
+In PowerShell, inside the project folder:
+
+```powershell
+python -m venv venv
+venv\Scripts\pip install -r requirements.txt
+copy .env.example .env        # then fill in your keys in Notepad
+.\run_pipeline.bat --authorize    # one-time Gmail sign-in (needs client_secret.json in this folder)
+.\run_pipeline.bat --dry-run      # prints parsed leads, writes nothing
+.\run_pipeline.bat                # one real run; output goes to logs\pipeline.log
+```
+
+Schedule it every 5 minutes with no console window popping up (runs while you're signed in; replace the folder path with yours):
+
+```powershell
+$dir = "C:\Users\YOU\Downloads\lead-pipeline"
+$action  = New-ScheduledTaskAction -Execute "$dir\venv\Scripts\pythonw.exe" -Argument "`"$dir\lead_pipeline.py`"" -WorkingDirectory $dir
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
+$settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName "Lead Pipeline" -Action $action -Trigger $trigger -Settings $settings
+```
+
+`pythonw.exe` runs without a window and the script logs to `logs\pipeline.log`. `IgnoreNew` skips a run if the previous one is still going (the Windows version of `flock`). To check on it: `Get-Content logs\pipeline.log -Tail 20`. To pause it: `Disable-ScheduledTask "Lead Pipeline"`; to remove it: `Unregister-ScheduledTask "Lead Pipeline"`.
+
 ## 5. Deploy to a cloud server (Ubuntu example)
 
 ```bash

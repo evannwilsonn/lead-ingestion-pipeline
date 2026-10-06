@@ -35,6 +35,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, TypeVar
 from urllib.parse import quote
 
@@ -55,6 +56,29 @@ AIRTABLE_MIN_INTERVAL = 0.25     # Airtable allows 5 req/s per base
 MAX_CONSECUTIVE_TRANSIENT = 3    # abort the run if an upstream service is clearly down
 
 T = TypeVar("T")
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+def load_dotenv(path: Path = SCRIPT_DIR / ".env") -> None:
+    """Load KEY=VALUE lines from .env next to this script. Real environment variables win.
+
+    Lets the script run the same way from cron, Windows Task Scheduler, or a plain terminal.
+    """
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip()
+        if value[:1] in ("'", '"') and value[-1:] == value[:1] and len(value) >= 2:
+            value = value[1:-1]
+        else:
+            value = "" if value.startswith("#") else re.split(r"\s+#", value, maxsplit=1)[0].strip()
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 # --------------------------------------------------------------------------- #
@@ -125,7 +149,7 @@ class Config:
             airtable_api_key=_env_any("AIRTABLE_API_KEY", "AIRTABLE_PAT"),
             airtable_base_id=_env("AIRTABLE_BASE_ID"),
             airtable_table=_env_any("AIRTABLE_TABLE", "AIRTABLE_TABLE_NAME"),
-            gmail_token_file=_env("GMAIL_TOKEN_FILE"),
+            gmail_token_file=str(SCRIPT_DIR / _env("GMAIL_TOKEN_FILE", "token.json")),
             claude_model=_env("CLAUDE_MODEL", "claude-sonnet-5-5"),
             subject=_env("GMAIL_SUBJECT", "New Website Inquiry"),
             processed_label=_env("GMAIL_PROCESSED_LABEL", "Lead-Processed"),
@@ -166,8 +190,8 @@ def authorize_interactive() -> None:
     """One-time OAuth flow. Run on a machine with a browser, then copy the token to the server."""
     from google_auth_oauthlib.flow import InstalledAppFlow
 
-    client_secret = _env("GMAIL_CLIENT_SECRET_FILE")
-    token_file = _env("GMAIL_TOKEN_FILE")
+    client_secret = str(SCRIPT_DIR / _env("GMAIL_CLIENT_SECRET_FILE", "client_secret.json"))
+    token_file = str(SCRIPT_DIR / _env("GMAIL_TOKEN_FILE", "token.json"))
     flow = InstalledAppFlow.from_client_secrets_file(client_secret, GMAIL_SCOPES)
     creds = flow.run_local_server(port=0, access_type="offline", prompt="consent")
     _write_token(token_file, creds)
@@ -642,10 +666,18 @@ def main() -> int:
     parser.add_argument("--authorize", action="store_true", help="run the one-time Gmail OAuth flow")
     parser.add_argument("--dry-run", action="store_true", help="parse and print leads; write nothing")
     args = parser.parse_args()
+    load_dotenv()
 
+    # Log to a file when LOG_FILE is set, or when there's no console (pythonw / Task Scheduler).
+    log_file = os.environ.get("LOG_FILE") or (
+        str(SCRIPT_DIR / "logs" / "pipeline.log") if sys.stderr is None else None
+    )
+    if log_file:
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=os.environ.get("LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        filename=log_file,
     )
     try:
         if args.authorize:
