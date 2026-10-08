@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy Policy · Lead Pipeline</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+<nav><a href="index.html">Home</a><a href="demo.html">Demo</a><a href="privacy.html">Privacy Policy</a></nav>
+<h1>Privacy Policy</h1>
+<p>Last updated: October 6, 2026</p>
+<p>This policy explains what information Lead Pipeline accesses, how it is used, and how it is protected.</p>
+<h2>Information we access</h2>
+<p>With your permission, Lead Pipeline accesses the Gmail account you connect, using Google's OAuth sign-in. It searches only for unread emails matching a configured subject line (for example, "New Website Inquiry") and reads the content of those emails. It also applies Gmail labels and marks those emails as read once processed.</p>
+<h2>How we use it</h2>
+<ul>
+<li>The text of each matching inquiry email is sent to Anthropic's Claude API to extract the contact details (name, email, phone), estimated budget, a priority tier and a short summary.</li>
+<li>The extracted lead details are saved to the Airtable base you control.</li>
+<li>If enabled, a short alert about high-priority leads is sent by text message through Twilio to phone numbers you configure.</li>
+</ul>
+<p>Information is used only to provide this lead-processing function. It is not sold, not used for advertising, and not shared with anyone other than the service providers named above, which process it on your behalf.</p>
+<h2>Google user data</h2>
+<p>Lead Pipeline's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Gmail data is not used to train AI models, and humans do not read it except when you request support or as required by law.</p>
+<h2>Storage and security</h2>
+<p>Lead Pipeline runs on infrastructure you or your provider control. Access credentials are stored locally in protected configuration files and are never published. Lead details are stored in your Airtable base and remain there until you delete them.</p>
+<h2>Your choices</h2>
+<p>You can revoke Lead Pipeline's access to your Google account at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>, and you can delete stored leads directly in Airtable.</p>
+<h2>Contact</h2>
+<p>Questions about this policy: <a href="mailto:evan.wilson114@gmail.com">evan.wilson114@gmail.com</a></p>
+<footer><a href="index.html">Lead Pipeline</a></footer>
+</main></body></html>

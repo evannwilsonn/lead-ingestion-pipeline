@@ -6,7 +6,7 @@ Website inquiries, read by AI, ranked and logged automatically.
 
 Small businesses often handle web inquiries by hand: open each email, copy the details into a spreadsheet, and reply hours later. This Python pipeline does that work on its own. It checks a Gmail inbox every few minutes, has Claude extract each lead's details into a strict schema, ranks it by priority, saves it to Airtable without duplicates, and labels the email so it is never handled twice.
 
-**Demo:** [one-minute video](docs/demo.mp4) · [interactive walkthrough](docs/demo.html) (download and open in a browser)
+**Demo:** [interactive walkthrough](https://evannwilsonn.github.io/lead-ingestion-pipeline/demo.html) · [one-minute video](docs/demo.mp4) · [project site](https://evannwilsonn.github.io/lead-ingestion-pipeline/)
 
 ## How it works
 
