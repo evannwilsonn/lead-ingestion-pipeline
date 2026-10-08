@@ -1,0 +1,362 @@
+<title>Lead Pipeline Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a fixed 1280x720 "screen" scaled to fit. Scenes: title, how it works, inbox, four real leads processed one by one, Airtable, labeled inbox, results. */
+:root {
+  --desk: #e9edf2;
+  --paper: #ffffff;
+  --ink: #15233b;
+  --muted: #5d6b80;
+  --line: #d5dce6;
+  --wash: #f6f8fb;
+  --accent: #2f5bea;
+  --accent-soft: #e6ecfd;
+  --t1: #1d7f52; --t1-soft: #e1f3ea;
+  --t2: #2f5bea; --t2-soft: #e6ecfd;
+  --t3: #6b7484; --t3-soft: #eceff3;
+  --label: #9a5b00; --label-soft: #fbefd9;
+  --term: #101a2c; --term-ink: #cfd8e6; --term-dim: #7f8ca3; --term-ok: #6fd3a2;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+html, body { background: var(--desk); color: var(--ink); }
+body { font-family: var(--body); padding-block: 24px; padding-inline: 16px; }
+.wrap { max-width: 1280px; margin: 0 auto; display: grid; gap: 14px; }
+.frame { position: relative; width: 100%; aspect-ratio: 16 / 9; max-width: 100%; overflow: hidden; border-radius: 14px; background: var(--desk); box-shadow: 0 1px 0 var(--line), 0 18px 40px -24px rgba(21,35,59,.35); }
+.stage { position: absolute; top: 0; left: 0; width: 1280px; height: 720px; transform-origin: 0 0; background: var(--desk); }
+.controls { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+.controls button { font: 600 14px var(--body); color: var(--paper); background: var(--ink); border: 0; border-radius: 8px; padding: 9px 16px; cursor: pointer; }
+.controls button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+body.rec { padding: 0; }
+body.rec .controls { display: none; }
+body.rec .frame { border-radius: 0; box-shadow: none; }
+
+.scene { position: absolute; inset: 0; opacity: 0; transition: opacity .55s ease; }
+.scene.on { opacity: 1; }
+.caption { position: absolute; left: 64px; bottom: 40px; display: flex; align-items: center; gap: 14px; font: 600 24px var(--display); letter-spacing: -.01em; }
+.step { font: 500 13px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--paper); background: var(--accent); border-radius: 6px; padding: 5px 9px; }
+.count { margin-left: 8px; font: 500 15px var(--mono); color: var(--muted); }
+
+/* cards */
+.card { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 18px; }
+.eyebrow { font: 500 15px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+.big { font: 700 84px/1 var(--display); letter-spacing: -.03em; margin: 0; text-wrap: balance; }
+.sub { font: 400 26px/1.4 var(--body); color: var(--muted); margin: 0 auto; max-width: 860px; text-wrap: balance; }
+.fine { font: 400 14px var(--mono); color: var(--muted); }
+.stats { display: flex; justify-content: center; gap: 18px; margin-top: 6px; }
+.stat { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px 22px; min-width: 190px; }
+.stat b { display: block; font: 700 40px/1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat span { font: 500 13px var(--mono); color: var(--muted); letter-spacing: .04em; }
+.credit { font: 500 18px var(--body); }
+
+/* how it works */
+.how-title { position: absolute; left: 64px; top: 56px; font: 700 40px var(--display); letter-spacing: -.02em; margin: 0; }
+.how-sub { position: absolute; left: 64px; top: 112px; font: 400 18px var(--body); color: var(--muted); margin: 0; }
+.flow { position: absolute; left: 64px; top: 176px; width: 1152px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 28px; }
+.node { position: relative; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px 16px 18px; opacity: 0; transform: translateY(10px); transition: opacity .45s ease, transform .45s ease; }
+.node.in { opacity: 1; transform: none; }
+.node .n { font: 500 12px var(--mono); color: var(--accent); letter-spacing: .08em; }
+.node h4 { margin: 6px 0 10px; font: 600 20px var(--display); letter-spacing: -.01em; }
+.node code { display: block; font: 400 13px/1.6 var(--mono); color: var(--muted); white-space: nowrap; }
+.node:not(:last-child)::after { content: ""; position: absolute; right: -22px; top: 50%; width: 14px; height: 14px; border-top: 2px solid var(--line); border-right: 2px solid var(--line); transform: translateY(-50%) rotate(45deg); }
+.schema { position: absolute; left: 64px; top: 372px; width: 1152px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; opacity: 0; transition: opacity .5s ease; }
+.schema.in { opacity: 1; }
+.schema h5 { margin: 0 0 12px; font: 600 15px var(--body); }
+.schema h5 span { font-weight: 400; color: var(--muted); }
+.fields { display: flex; flex-wrap: wrap; gap: 10px; }
+.fields code { font: 500 14px var(--mono); background: var(--wash); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+.fields code i { font-style: normal; color: var(--muted); }
+.rules { margin-top: 14px; display: flex; gap: 24px; font: 400 14px var(--body); color: var(--muted); }
+.rules b { color: var(--ink); font-weight: 600; }
+
+/* windows */
+.win { position: absolute; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 20px 40px -28px rgba(21,35,59,.45); }
+.winbar { height: 42px; display: flex; align-items: center; gap: 10px; padding: 0 18px; border-bottom: 1px solid var(--line); font: 600 15px var(--body); }
+.winbar .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.winbar .tag { margin-left: auto; font: 500 12px var(--mono); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+
+/* inbox */
+.mail { left: 64px; top: 56px; width: 1152px; height: 540px; }
+.row { display: grid; grid-template-columns: 16px 150px 1fr auto auto; align-items: center; gap: 14px; height: 60px; padding: 0 22px; border-bottom: 1px solid var(--line); font-size: 16px; white-space: nowrap; }
+.row .dotu { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.row .from { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.row .subj { overflow: hidden; text-overflow: ellipsis; }
+.row .subj b { font-weight: 600; }
+.row .subj em { font-style: normal; color: var(--muted); }
+.row .time { font: 400 13px var(--mono); color: var(--muted); }
+.row .lbl { font: 500 12px var(--mono); color: var(--label); background: var(--label-soft); padding: 4px 8px; border-radius: 6px; opacity: 0; transform: scale(.8); transition: opacity .35s ease, transform .35s ease; }
+.row.ghost .bar { height: 10px; border-radius: 5px; background: #eef1f5; }
+.row.inq { background: var(--accent-soft); opacity: 0; transform: translateY(-14px); transition: opacity .4s ease, transform .4s ease, background .5s ease; }
+.row.inq.in { opacity: 1; transform: none; }
+.row.inq.done { background: var(--paper); }
+.row.inq.done .dotu { background: transparent; }
+.row.inq.done .from, .row.inq.done .subj b { font-weight: 400; }
+.row.inq.done .lbl { opacity: 1; transform: none; }
+
+/* processing */
+.src { left: 64px; top: 56px; width: 440px; height: 290px; }
+.src pre { margin: 0; padding: 16px 20px; font: 400 14px/1.65 var(--mono); white-space: pre-wrap; color: var(--ink); }
+.src pre span { color: var(--muted); }
+.term { left: 64px; top: 362px; width: 440px; height: 236px; background: var(--term); border-color: var(--term); }
+.term .winbar { color: var(--term-ink); border-color: #22314a; }
+.term .winbar .dot { background: #2b3b57; }
+.term .winbar .tag { color: var(--term-dim); }
+.log { margin: 0; padding: 12px 18px; font: 400 13px/1.7 var(--mono); color: var(--term-ink); white-space: pre; display: flex; flex-direction: column; justify-content: flex-end; height: 194px; box-sizing: border-box; overflow: hidden; }
+.log div { opacity: 0; transition: opacity .25s ease; }
+.log div.in { opacity: 1; }
+.log .dim { color: var(--term-dim); }
+.log .ok { color: var(--term-ok); }
+.json { left: 528px; top: 56px; width: 688px; height: 542px; }
+.json pre { margin: 0; padding: 18px 24px; font: 400 16px/1.7 var(--mono); white-space: pre-wrap; }
+.json .ln { opacity: 0; transition: opacity .25s ease; display: block; }
+.json .ln.in { opacity: 1; }
+.json .k { color: var(--muted); }
+.json .s { color: var(--ink); }
+.json .nu { color: var(--accent); }
+.json .nl { color: #b4541a; }
+.pill { display: inline-block; font: 600 14px var(--body); border-radius: 999px; padding: 3px 11px; }
+.pill.t1 { color: var(--t1); background: var(--t1-soft); }
+.pill.t2 { color: var(--t2); background: var(--t2-soft); }
+.pill.t3 { color: var(--t3); background: var(--t3-soft); }
+.why { position: absolute; left: 24px; right: 24px; bottom: 20px; display: flex; gap: 12px; align-items: flex-start; background: var(--wash); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font: 400 15px/1.5 var(--body); opacity: 0; transition: opacity .4s ease; }
+.why.in { opacity: 1; }
+.why b { font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-top: 3px; white-space: nowrap; }
+
+/* airtable */
+.table { left: 64px; top: 56px; width: 1152px; height: 540px; }
+.grid { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+.grid th { text-align: left; font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--wash); padding: 11px 12px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid td { padding: 12px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); vertical-align: top; overflow: hidden; text-overflow: ellipsis; }
+.grid td.nw { white-space: nowrap; }
+.grid td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.grid td.blank { color: var(--t3); }
+.grid td.sum { font-size: 13px; line-height: 1.45; color: var(--muted); }
+.grid tr.lead td { opacity: 0; transition: opacity .4s ease; }
+.grid tr.lead.in td { opacity: 1; }
+.grid tr.lead.in { animation: flash 1.8s ease; }
+@keyframes flash { 0% { background: var(--accent-soft); } 100% { background: transparent; } }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <div class="frame" id="frame">
+    <div class="stage" id="stage">
+
+      <section class="scene on" id="s-title">
+        <div class="card">
+          <div class="eyebrow">Working prototype · real test run</div>
+          <h1 class="big">Lead Pipeline</h1>
+          <p class="sub">Four website inquiries go in. Four ranked, organized leads come out, with nobody copying and pasting.</p>
+        </div>
+      </section>
+
+      <section class="scene" id="s-how">
+        <h2 class="how-title">How it works</h2>
+        <p class="how-sub">A Python script on a schedule connects four services. Each step below is real code in the pipeline.</p>
+        <div class="flow">
+          <div class="node"><div class="n">01</div><h4>Schedule</h4><code>runs every 5 minutes</code><code>Task Scheduler / cron</code></div>
+          <div class="node"><div class="n">02</div><h4>Gmail API</h4><code>is:unread +</code><code>"New Website Inquiry"</code></div>
+          <div class="node"><div class="n">03</div><h4>Claude API</h4><code>structured output</code><code>strict JSON schema</code></div>
+          <div class="node"><div class="n">04</div><h4>Airtable</h4><code>upsert, no dupes</code><code>merge on Email</code></div>
+          <div class="node"><div class="n">05</div><h4>Gmail label</h4><code>+ Lead-Processed</code><code>errors: Lead-Failed</code></div>
+        </div>
+        <div class="schema" id="schema">
+          <h5>The schema Claude must fill <span>· any field it can't find comes back null, never guessed</span></h5>
+          <div class="fields">
+            <code>first_name</code><code>last_name</code><code>email</code><code>phone</code><code>estimated_budget <i>number</i></code><code>lead_tier <i>Tier 1 | 2 | 3</i></code><code>summary <i>2 sentences</i></code>
+          </div>
+          <div class="rules"><span><b>Tier 1</b> $10k+ budget or urgent</span><span><b>Tier 2</b> standard inquiry</span><span><b>Tier 3</b> under $1k, spam or solicitation</span></div>
+        </div>
+      </section>
+
+      <section class="scene" id="s-mail">
+        <div class="win mail">
+          <div class="winbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp;Inbox<span class="tag">Gmail</span></div>
+          <div id="inqrows"></div>
+          <div class="row ghost"><span></span><div class="bar" style="width:110px"></div><div class="bar" style="width:58%"></div><span class="time">Oct 5</span><span></span></div>
+          <div class="row ghost"><span></span><div class="bar" style="width:90px"></div><div class="bar" style="width:44%"></div><span class="time">Oct 4</span><span></span></div>
+          <div class="row ghost"><span></span><div class="bar" style="width:124px"></div><div class="bar" style="width:66%"></div><span class="time">Oct 4</span><span></span></div>
+          <div class="row ghost"><span></span><div class="bar" style="width:84px"></div><div class="bar" style="width:38%"></div><span class="time">Oct 3</span><span></span></div>
+        </div>
+        <div class="caption"><span class="step" id="mailstep">Step 1</span><span id="mailtext">Four new inquiries arrive in Gmail</span></div>
+      </section>
+
+      <section class="scene" id="s-proc">
+        <div class="win src"><div class="winbar">Raw email<span class="tag" id="srctag">1 of 4</span></div><pre id="srcbody"></pre></div>
+        <div class="win term"><div class="winbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp;lead_pipeline.py<span class="tag">run log</span></div><div class="log" id="log"></div></div>
+        <div class="win json"><div class="winbar">Claude API response<span class="tag">JSON · schema-valid</span></div><pre id="jsonbody"></pre><div class="why" id="why"><b>Why</b><span id="whytext"></span></div></div>
+        <div class="caption"><span class="step">Step 2</span>Claude reads each email and fills the schema<span class="count" id="proccount">lead 1 of 4</span></div>
+      </section>
+
+      <section class="scene" id="s-table">
+        <div class="win table">
+          <div class="winbar">Lead Pipeline · Leads<span class="tag">Airtable</span></div>
+          <table class="grid">
+            <colgroup><col style="width:8%"><col style="width:7%"><col style="width:20%"><col style="width:12%"><col style="width:9%"><col style="width:8%"><col style="width:36%"></colgroup>
+            <thead><tr><th>First Name</th><th>Last Name</th><th>Email</th><th>Phone</th><th>Est. Budget</th><th>Lead Tier</th><th>Summary</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <div class="caption"><span class="step">Step 3</span>Each lead is upserted to Airtable, ranked</div>
+      </section>
+
+      <section class="scene" id="s-end">
+        <div class="card">
+          <div class="eyebrow">Results from this test run</div>
+          <div class="stats">
+            <div class="stat"><b>4</b><span>inquiries sorted</span></div>
+            <div class="stat"><b>~10 s</b><span>total AI time</span></div>
+            <div class="stat"><b>0</b><span>fields copy-pasted</span></div>
+          </div>
+          <div class="credit">Python · Gmail API · Claude API · Airtable · built by Evan Wilson</div>
+          <div class="fine">Outputs are Claude's real responses to four test emails · animation sped up</div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+  <div class="controls">
+    <span>A one-minute walkthrough of four test inquiries moving through the pipeline.</span>
+    <button id="replay" type="button">Replay</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const stage = document.getElementById('stage');
+  const frame = document.getElementById('frame');
+  const fit = () => { stage.style.transform = 'scale(' + (frame.clientWidth / 1280) + ')'; };
+  window.addEventListener('resize', fit); fit();
+  if (/rec/.test(location.search)) document.body.classList.add('rec');
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+  // Real outputs from parse_lead() run on Oct 8, 2026 (claude-sonnet-5-5).
+  const leads = [
+    { from: 'Dana Ruiz', time: '4:41 PM', preview: 'Name: Dana Ruiz · Budget: $15,000 - $20,000',
+      body: 'Name: Dana Ruiz\nEmail: dana.ruiz@example.com\nPhone: (813) 555-0142\nBudget: $15,000 - $20,000\nMessage: We run three dental offices in Tampa\nand need a new website with online booking.\nWe\'d like to launch within the next four weeks.',
+      secs: 3.7, mask: 'da***@example.com',
+      out: { first_name: 'Dana', last_name: 'Ruiz', email: 'dana.ruiz@example.com', phone: '(813) 555-0142', estimated_budget: 17500, lead_tier: 'Tier 1',
+        summary: 'Dana Ruiz operates three dental offices in Tampa and needs a new website with online booking. She wants to launch within four weeks and has a budget of $15,000-$20,000.' },
+      why: 'A $15k–$20k range becomes its $17,500 midpoint. Over $10k with a 4-week deadline puts it in Tier 1.' },
+    { from: 'Marcus Bell', time: '4:42 PM', preview: 'Name: Marcus Bell · Budget: around $4,000',
+      body: 'Name: Marcus Bell\nEmail: marcus@bell-landscaping.example\nPhone: 850-555-0198\nBudget: around $4,000\nMessage: Small landscaping company in\nTallahassee. Our site is from 2015 and looks\ndated. Looking to refresh it sometime this\nspring, no rush.',
+      secs: 1.8, mask: 'ma***@bell-landscaping.example',
+      out: { first_name: 'Marcus', last_name: 'Bell', email: 'marcus@bell-landscaping.example', phone: '850-555-0198', estimated_budget: 4000, lead_tier: 'Tier 2',
+        summary: 'Marcus Bell runs a small landscaping company in Tallahassee and wants to refresh a dated 2015 website. He has a budget of around $4,000 and a flexible spring timeline with no rush.' },
+      why: 'A real project with a moderate budget and "no rush" is a standard Tier 2 lead.' },
+    { from: 'Priya Shah', time: '4:44 PM', preview: 'Name: Priya Shah · opening a family law practice',
+      body: 'Name: Priya Shah\nEmail: priya@shahlaw.example\nMessage: Hi, I\'m opening a family law\npractice next month and need a site up\nbefore we open. Not sure on budget yet,\nmaybe five or six grand? Please call me,\nmy cell is 727 555 0113.',
+      secs: 2.1, mask: 'pr***@shahlaw.example',
+      out: { first_name: 'Priya', last_name: 'Shah', email: 'priya@shahlaw.example', phone: '727 555 0113', estimated_budget: 5500, lead_tier: 'Tier 1',
+        summary: 'Priya Shah is opening a family law practice next month and needs a website live before the opening. She estimates a budget of five to six thousand dollars and requests a phone call.' },
+      why: 'No form fields: the phone is pulled from the message and "five or six grand" becomes $5,500. The deadline next month makes it urgent, so Tier 1.' },
+    { from: 'SEO Team', time: '4:45 PM', preview: 'we can get your site to #1 on Google in 30 days',
+      body: 'Name: SEO Team\nEmail: growth@rankfast.example\nMessage: Dear website owner, we can get\nyour site to #1 on Google in 30 days\nguaranteed!!! We also offer backlinks\npackages starting at $99. Reply YES to\nclaim your free audit.',
+      secs: 2.4, mask: 'gr***@rankfast.example',
+      out: { first_name: 'SEO', last_name: 'Team', email: 'growth@rankfast.example', phone: null, estimated_budget: null, lead_tier: 'Tier 3',
+        summary: 'Unsolicited SEO vendor pitch promising a #1 Google ranking in 30 days and backlink packages starting at $99. This is solicitation spam, not a genuine client inquiry.' },
+      why: 'A sales pitch, not a client, so Tier 3. No phone or budget was given, so those come back null instead of being made up.' }
+  ];
+  const tierClass = t => t === 'Tier 1' ? 't1' : t === 'Tier 2' ? 't2' : 't3';
+  const money = n => n == null ? '' : '$' + n.toLocaleString('en-US');
+
+  // build inbox rows and table rows once
+  $('inqrows').innerHTML = leads.map((l, i) => '<div class="row inq" data-i="' + i + '"><span class="dotu"></span><span class="from">' + esc(l.from) + '</span><span class="subj"><b>New Website Inquiry</b> <em>· ' + esc(l.preview) + '</em></span><span class="time">' + l.time + '</span><span class="lbl">Lead-Processed</span></div>').join('');
+  $('rows').innerHTML = leads.map((l, i) => { const o = l.out; return '<tr class="lead" data-i="' + i + '"><td class="nw">' + esc(o.first_name) + '</td><td class="nw">' + esc(o.last_name) + '</td><td class="nw">' + esc(o.email) + '</td><td class="num' + (o.phone ? '' : ' blank') + '">' + (o.phone ? esc(o.phone) : 'empty') + '</td><td class="num' + (o.estimated_budget == null ? ' blank' : '') + '">' + (o.estimated_budget == null ? 'empty' : money(o.estimated_budget)) + '</td><td><span class="pill ' + tierClass(o.lead_tier) + '" style="font-size:12px;padding:2px 9px">' + o.lead_tier + '</span></td><td class="sum">' + esc(o.summary) + '</td></tr>'; }).join('');
+
+  function jsonLines(o) {
+    const keys = Object.keys(o), lines = ['{'];
+    keys.forEach((k, idx) => {
+      const v = o[k], comma = idx < keys.length - 1 ? ',' : '';
+      let val;
+      if (v === null) val = '<span class="nl">null</span>';
+      else if (typeof v === 'number') val = '<span class="nu">' + v + '</span>';
+      else if (k === 'lead_tier') val = '<span class="s">"' + v + '"</span>  <span class="pill ' + tierClass(v) + '">' + v + '</span>';
+      else val = '<span class="s">"' + esc(v) + '"</span>';
+      lines.push('  <span class="k">"' + k + '"</span>: ' + val + comma);
+    });
+    lines.push('}');
+    return lines;
+  }
+
+  let timers = [];
+  const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const scenes = ['s-title', 's-how', 's-mail', 's-proc', 's-table', 's-end'];
+  const show = id => scenes.forEach(s => $(s).classList.toggle('on', s === id));
+  function logLine(html) {
+    const d = document.createElement('div'); d.innerHTML = html; $('log').appendChild(d);
+    requestAnimationFrame(() => d.classList.add('in'));
+    while ($('log').children.length > 10) $('log').removeChild($('log').firstChild);
+  }
+
+  function reset() {
+    timers.forEach(clearTimeout); timers = [];
+    document.querySelectorAll('.node, #schema').forEach(n => n.classList.remove('in'));
+    document.querySelectorAll('.row.inq').forEach(r => r.className = 'row inq');
+    document.querySelectorAll('tr.lead').forEach(r => r.className = 'lead');
+    $('log').innerHTML = ''; $('jsonbody').innerHTML = ''; $('why').classList.remove('in');
+    $('mailstep').textContent = 'Step 1'; $('mailtext').textContent = 'Four new inquiries arrive in Gmail';
+    show('s-title');
+  }
+
+  function play() {
+    reset();
+    let t = 3200;
+    at(t, () => show('s-how'));
+    document.querySelectorAll('.node').forEach((n, i) => at(t + 500 + i * 450, () => n.classList.add('in')));
+    at(t + 3000, () => $('schema').classList.add('in'));
+    t += 9500;
+    at(t, () => show('s-mail'));
+    document.querySelectorAll('.row.inq').forEach((r, i) => at(t + 500 + i * 450, () => r.classList.add('in')));
+    t += 4200;
+    at(t, () => {
+      show('s-proc');
+      logLine('<span class="dim">16:46:00</span> INFO Searching Gmail: is:unread');
+      logLine('<span class="dim">16:46:00</span> INFO Found 4 candidate message(s)');
+    });
+    const per = 6800;
+    leads.forEach((l, i) => {
+      const s = t + 600 + i * per;
+      at(s, () => {
+        $('srcbody').innerHTML = esc(l.body).replace(/^(Name|Email|Phone|Budget|Message):/gm, '<span>$1:</span>');
+        $('srctag').textContent = (i + 1) + ' of 4';
+        $('proccount').textContent = 'lead ' + (i + 1) + ' of 4';
+        $('jsonbody').innerHTML = ''; $('why').classList.remove('in');
+        logLine('<span class="dim">16:46:0' + (2 + i * 2) + '</span> POST api.anthropic.com/v1/messages');
+      });
+      const lines = jsonLines(l.out);
+      at(s + 900, () => { $('jsonbody').innerHTML = lines.map(x => '<span class="ln">' + x + '</span>').join(''); });
+      lines.forEach((_, j) => at(s + 1000 + j * 170, () => { const el = $('jsonbody').children[j]; if (el) el.classList.add('in'); }));
+      at(s + 1000 + lines.length * 170, () => logLine('<span class="dim">       </span> <span class="ok">200 OK</span> · ' + l.secs + 's · ' + l.out.lead_tier));
+      at(s + 2800, () => $('why').classList.add('in'));
+      at(s + 3400, () => { $('whytext').textContent = l.why; });
+      at(s + 4600, () => logLine('<span class="dim">       </span> INFO Processed lead ' + (i + 1) + ' -&gt; ' + l.out.lead_tier + ', labeled'));
+    });
+    // show "why" text before the panel fades in
+    leads.forEach((l, i) => at(t + 600 + i * per + 2700, () => { $('whytext').textContent = l.why; }));
+    t += 600 + leads.length * per;
+    at(t - 400, () => logLine('<span class="dim">16:46:11</span> INFO Run complete: {\'ok\': 4, \'failed\': 0}'));
+    at(t + 800, () => show('s-table'));
+    document.querySelectorAll('tr.lead').forEach((r, i) => at(t + 1400 + i * 650, () => r.classList.add('in')));
+    t += 6600;
+    at(t, () => {
+      $('mailstep').textContent = 'Step 4'; $('mailtext').textContent = 'All four emails are labeled so none is handled twice';
+      show('s-mail');
+    });
+    document.querySelectorAll('.row.inq').forEach((r, i) => at(t + 700 + i * 350, () => r.classList.add('done')));
+    t += 4600;
+    at(t, () => show('s-end'));
+    at(t + 5200, () => { window.__demoDone = true; });
+  }
+
+  $('replay').addEventListener('click', play);
+  window.__play = play;
+  play();
+})();
+</script>

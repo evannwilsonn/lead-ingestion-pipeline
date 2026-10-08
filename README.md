@@ -1,6 +1,49 @@
-# Lead Ingestion Pipeline — Setup
+# Lead Pipeline
 
-Gmail ("New Website Inquiry") → Claude (structured extraction + tiering) → Airtable upsert → optional text alert to your team for Tier 1 leads.
+Website inquiries, read by AI, ranked and logged automatically.
+
+![Lead Pipeline overview](docs/collage.png)
+
+Small businesses often handle web inquiries by hand: open each email, copy the details into a spreadsheet, and reply hours later. This Python pipeline does that work on its own. It checks a Gmail inbox every few minutes, has Claude extract each lead's details into a strict schema, ranks it by priority, saves it to Airtable without duplicates, and labels the email so it is never handled twice.
+
+**Demo:** [one-minute video](docs/demo.mp4) · [interactive walkthrough](docs/demo.html) (download and open in a browser)
+
+## How it works
+
+| Step | What happens | Where in the code |
+|---|---|---|
+| 1. Schedule | Runs every 5 minutes (Windows Task Scheduler or cron) | `run_pipeline.bat` / `run_pipeline.sh` |
+| 2. Gmail API | Finds unread emails matching `subject:"New Website Inquiry"` | `find_candidate_ids()` |
+| 3. Claude API | Returns JSON that must match a strict schema (structured outputs); missing fields come back `null`, never guessed | `parse_lead()`, `LEAD_SCHEMA` |
+| 4. Airtable | Upserts the lead, merging on Email (or Gmail message ID) so reruns never duplicate | `AirtableClient.upsert()` |
+| 5. Gmail label | Marks the email read and adds `Lead-Processed`; unreadable emails get `Lead-Failed` for review | `process_message()` |
+| Optional | Texts the team about Tier 1 leads via Twilio | `TwilioClient` |
+
+**Tiers:** Tier 1 = $10k+ budget or urgent · Tier 2 = standard inquiry · Tier 3 = under $1k, spam or solicitation (the $10k cutoff is configurable).
+
+## Example results
+
+Real Claude responses from a test run on Oct 8, 2026 (each call took 1.8–3.7 seconds):
+
+| Inquiry | Budget extracted | Tier | Why |
+|---|---|---|---|
+| Three dental offices, booking site, launch in 4 weeks | $17,500 (midpoint of $15k–$20k) | Tier 1 | Over $10k with a deadline |
+| Landscaping company, site refresh, "no rush" | $4,000 | Tier 2 | Real project, moderate budget |
+| New law practice, no form fields, "maybe five or six grand?" | $5,500 | Tier 1 | Opening next month makes it urgent; phone pulled from the message text |
+| SEO agency spam pitch | null | Tier 3 | Solicitation; phone and budget left null instead of invented |
+
+## Error handling
+
+- **Temporary failures** (network drops, rate limits, outages) retry with backoff; if still failing, the email stays unread for the next run.
+- **Bad emails** get the `Lead-Failed` label and are skipped on future runs.
+- **Config or auth problems** stop the run with exit code 2 and a `CRITICAL` log line.
+- Credentials live only in `.env`, `token.json` and `client_secret.json`, all gitignored.
+
+**Stack:** Python · Gmail API (OAuth 2.0) · Anthropic Claude API · Airtable REST API · Twilio (optional)
+
+---
+
+# Setup
 
 ## 1. Google Cloud Console (Gmail API credentials)
 
@@ -142,7 +185,7 @@ New leads reach Airtable, and Tier 1 texts go out, within about one to two minut
 
 (A systemd timer works equally well if you prefer `journalctl` logging.)
 
-## How failures are handled
+## Troubleshooting failures
 
 - **Transient** (network drops, 429s, 5xx, Claude overloaded): retried with backoff inside the run; if still failing, the email is left unread and picked up next run. Three in a row aborts the run early.
 - **Permanent** (empty body, Airtable schema mismatch, unparseable output): email gets the `Lead-Failed` label and stays unread for manual review; it's excluded from future searches. Remove the label to retry.
